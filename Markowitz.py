@@ -66,6 +66,15 @@ class EqualWeightPortfolio:
         """
         TODO: Complete Task 1 Below
         """
+        num_assets = len(assets)
+        equal_weight = 1.0 / num_assets
+
+        # Assign the equal weight to each asset in the portfolio weights DataFrame
+        for asset in assets:
+            self.portfolio_weights[asset] = equal_weight
+
+        # Set weights for excluded asset to zero
+        self.portfolio_weights[self.exclude] = 0
 
         """
         TODO: Complete Task 1 Above
@@ -117,7 +126,18 @@ class RiskParityPortfolio:
         """
         TODO: Complete Task 2 Below
         """
+        volatilities = df_returns[assets].rolling(window=self.lookback).std()
+        inverse_volatility = 1.0 / volatilities
 
+        # Calculate the sum of inverse volatilities for normalization
+        sum_inverse_volatility = inverse_volatility.sum(axis=1)
+
+        # Assign weights inversely proportional to the volatility
+        for asset in assets:
+            self.portfolio_weights[asset] = inverse_volatility[asset].div(sum_inverse_volatility)
+
+        # Set weights for excluded asset to zero
+        self.portfolio_weights[self.exclude] = 0
         """
         TODO: Complete Task 2 Above
         """
@@ -198,27 +218,32 @@ class MeanVariancePortfolio:
                 """
                 TODO: Complete Task 3 Below
                 """
+                w = model.addMVar(n, lb=0, ub=1, name="w")
+
+                # Set the objective function
+                portfolio_return = mu @ w - gamma / 2 * (w @ Sigma @ w)
+                model.setObjective(portfolio_return, gp.GRB.MAXIMIZE)
+
+                # Add the constraints
+                model.addConstr(w.sum() == 1, "budget")
+
+                # Optimize the model
                 model.optimize()
 
-                # Check if the status is INF_OR_UNBD (code 4)
+                # Check model status and handle infeasible or unbounded solutions
                 if model.status == gp.GRB.INF_OR_UNBD:
-                    print(
-                        "Model status is INF_OR_UNBD. Reoptimizing with DualReductions set to 0."
-                    )
+                    print("Model status is INF_OR_UNBD. Reoptimizing with DualReductions set to 0.")
+                    model.optimize()
                 elif model.status == gp.GRB.INFEASIBLE:
-                    # Handle infeasible model
                     print("Model is infeasible.")
                 elif model.status == gp.GRB.INF_OR_UNBD:
-                    # Handle infeasible or unbounded model
                     print("Model is infeasible or unbounded.")
 
+                # Extract the optimal weights if the solution is found
                 if model.status == gp.GRB.OPTIMAL or model.status == gp.GRB.SUBOPTIMAL:
-                    # Extract the solution
-                    solution = []
-                    for i in range(n):
-                        var = model.getVarByName(f"w[{i}]")
-                        # print(f"w {i} = {var.X}")
-                        solution.append(var.X)
+                    solution = w.X
+                else:
+                    solution = np.zeros(n)
 
         return solution
 

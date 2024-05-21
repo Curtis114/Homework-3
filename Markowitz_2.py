@@ -51,45 +51,48 @@ Create your own strategy, you can add parameter but please remain "price" and "e
 
 
 class MyPortfolio:
-    """
-    NOTE: You can modify the initialization function
-    """
-
-    def __init__(self, price, exclude, lookback=50, gamma=0):
+    def __init__(self, price, exclude, lookback_momentum=10, lookback_mean_reversion=60):
         self.price = price
         self.returns = price.pct_change().fillna(0)
         self.exclude = exclude
-        self.lookback = lookback
-        self.gamma = gamma
+        self.lookback_momentum = lookback_momentum
+        self.lookback_mean_reversion = lookback_mean_reversion
 
     def calculate_weights(self):
-        # Get the assets by excluding the specified column
         assets = self.price.columns[self.price.columns != self.exclude]
+        self.portfolio_weights = pd.DataFrame(index=self.price.index, columns=self.price.columns)
 
-        # Calculate the portfolio weights
-        self.portfolio_weights = pd.DataFrame(
-            index=self.price.index, columns=self.price.columns
-        )
+        # Calculate short-term momentum
+        momentum = self.returns[assets].rolling(window=self.lookback_momentum).mean()
 
-        """
-        TODO: Complete Task 4 Below
-        """
+        # Calculate long-term mean reversion potential
+        long_term_mean = self.price[assets].rolling(window=self.lookback_mean_reversion).mean()
+        deviations = (self.price[assets] - long_term_mean) / long_term_mean
 
-        """
-        TODO: Complete Task 4 Above
-        """
+        # Normalize momentum and deviations
+        normalized_momentum = (momentum.T / momentum.abs().sum(axis=1)).T
+        normalized_deviations = (deviations.T / deviations.abs().sum(axis=1)).T
+
+        # Combine the factors
+        combined_weights = 0.5 * normalized_momentum + 0.5 * normalized_deviations
+
+        # Assign combined weights to portfolio_weights
+        for date, weights in combined_weights.iterrows():
+            self.portfolio_weights.loc[date, assets] = weights
+
+        # Set weights for excluded asset to zero
+        self.portfolio_weights[self.exclude] = 0
 
         self.portfolio_weights.ffill(inplace=True)
-        self.portfolio_weights.fillna(0, inplace=True)
+        self.portfolio_weights.clip(lower=0, inplace=True)
+        self.portfolio_weights = self.portfolio_weights.div(self.portfolio_weights.sum(axis=1), axis=0)
 
     def calculate_portfolio_returns(self):
-        # Ensure weights are calculated
         if not hasattr(self, "portfolio_weights"):
             self.calculate_weights()
 
-        # Calculate the portfolio returns
-        self.portfolio_returns = self.returns.copy()
         assets = self.price.columns[self.price.columns != self.exclude]
+        self.portfolio_returns = self.returns.copy()
         self.portfolio_returns["Portfolio"] = (
             self.portfolio_returns[assets]
             .mul(self.portfolio_weights[assets])
@@ -97,7 +100,6 @@ class MyPortfolio:
         )
 
     def get_results(self):
-        # Ensure portfolio returns are calculated
         if not hasattr(self, "portfolio_returns"):
             self.calculate_portfolio_returns()
 
